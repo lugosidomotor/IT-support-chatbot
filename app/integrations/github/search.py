@@ -46,6 +46,12 @@ SKIP_SUFFIXES = (".min.js", ".min.css", ".map", ".svg", ".lock", ".snap")
 # Translated documentation trees (e.g. docs/de/...) are deprioritised in favour of English sources.
 _TRANSLATED_DOCS = re.compile(r"(^|/)docs?/(?!en/)[a-z]{2}(-[a-z]{2,4})?/", re.IGNORECASE)
 _WORD = re.compile(r"[A-Za-z0-9_.$@-]{2,}")
+GENERIC_TERMS = {
+    "a", "an", "and", "are", "by", "class", "code", "def", "defined", "definition", "do", "does", "file", "files",
+    "find", "for", "from", "func", "function", "how", "implement", "implementation", "implemented", "implements",
+    "in", "is", "it", "method", "module", "of", "on", "or", "show", "that", "the", "this", "to", "usage", "use",
+    "used", "what", "where", "which", "why", "with",
+}
 MAX_TOTAL_BYTES = 12_000_000
 MAX_RESULT_FILES = 25
 MAX_LINES_PER_FILE = 6
@@ -66,6 +72,7 @@ class _FileResult:
     score: float
     matches: list[tuple[int, str]] = field(default_factory=list)
     match_count: int = 0
+    best_line: int = 0
 
 
 def classify(path: str) -> str | None:
@@ -97,7 +104,9 @@ def query_terms(query: str) -> list[str]:
         word = word.strip(".-")
         if len(word) >= 2 and word not in terms:
             terms.append(word)
-    return terms[:8]
+    # Words like "class" or "where" match almost every file; drop them when something more specific remains.
+    specific = [t for t in terms if t not in GENERIC_TERMS]
+    return (specific or terms)[:8]
 
 
 _SPLIT = re.compile(r"[_\-./:$@]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
@@ -141,20 +150,25 @@ def score_path(path: str, kind: str, terms: list[str], parts: list[str] | None =
     return score
 
 
-def scan_text(text: str, query: str, terms: list[str]) -> tuple[float, int, list[tuple[int, str]]]:
-    """Return (score, match_count, sample lines) for one file."""
-    phrase = query.lower().strip()
+def scan_text(text: str, query: str, terms: list[str]) -> tuple[float, int, list[tuple[int, str]], int]:
+    """Return (score, match_count, sample lines, best line number) for one file."""
+    # Match the literal query and also the query without generic words ("OAuth2PasswordBearer class").
+    phrases = list(dict.fromkeys(p for p in (query.lower().strip(), " ".join(terms)) if p))
+    identifier = next((p for p in phrases if re.fullmatch(r"[a-z0-9_$]+", p)), None)
     definition = (
-        re.compile(rf"\b(class|def|func|function|interface|type|struct|enum|const|let|var)\s+{re.escape(phrase)}\b")
-        if re.fullmatch(r"[a-z0-9_$]+", phrase) else None
+        re.compile(rf"\b(class|def|func|function|interface|type|struct|enum|const|let|var)\s+{re.escape(identifier)}\b")
+        if identifier else None
     )
     scored: list[tuple[float, int, str]] = []
     match_count = 0
+    defines = False
     terms_seen: set[str] = set()
     for number, line in enumerate(text.splitlines(), start=1):
         lower = line.lower()
-        if phrase and phrase in lower:
-            line_score = 25.0 if definition is not None and definition.search(lower) else 10.0
+        if any(p in lower for p in phrases):
+            is_definition = definition is not None and definition.search(lower) is not None
+            defines = defines or is_definition
+            line_score = 25.0 if is_definition else 10.0
         else:
             hits = [t for t in terms if t in lower]
             if not hits:
@@ -167,10 +181,12 @@ def scan_text(text: str, query: str, terms: list[str]) -> tuple[float, int, list
         terms_seen.update(t for t in terms if t in lower)
         scored.append((line_score, number, line.strip()[:240]))
     if not scored:
-        return 0.0, 0, []
+        return 0.0, 0, [], 0
     total = sum(s for s, _, _ in scored[:50]) + 3.0 * len(terms_seen)
+    if defines:
+        total += 60.0  # "where is X defined" is the most common intent: the defining file wins
     best = sorted(scored, key=lambda item: (-item[0], item[1]))[:MAX_LINES_PER_FILE]
-    return total, match_count, sorted(((n, t) for _, n, t in best), key=lambda item: item[0])
+    return total, match_count, sorted(((n, t) for _, n, t in best), key=lambda item: item[0]), best[0][1]
 
 
 async def search_repository_content(
@@ -275,11 +291,13 @@ async def search_repository_content(
         bytes_searched += len(response.content)
         if b"\x00" in response.content[:8192]:
             return
-        score, count, lines = scan_text(response.content.decode("utf-8", "replace"), query, terms)
+        score, count, lines, best_line = scan_text(response.content.decode("utf-8", "replace"), query, terms)
         if count:
             if "test" in path.lower():
                 score *= 0.6
-            results.append(_FileResult(path, score + path_score / 10, lines, count))
+            if _TRANSLATED_DOCS.search(path.lower()):
+                score *= 0.3
+            results.append(_FileResult(path, score + path_score / 10, lines, count, best_line))
 
     tasks = [asyncio.create_task(scan(path, score)) for score, path, _ in selected]
     if tasks:
@@ -306,8 +324,9 @@ async def search_repository_content(
         "results": [
             {
                 "path": r.path,
+                # Anchored at the best-scoring line; link other lines as <file URL>#L<line>.
                 "html_url": f"{WEB_ORIGIN}/{repo}/blob/{ref_segment}/{quote(r.path, safe='/')}"
-                + (f"#L{r.matches[0][0]}" if r.matches else ""),
+                + (f"#L{r.best_line}" if r.best_line else ""),
                 "match_count": r.match_count,
                 "matches": [{"line": n, "text": t} for n, t in r.matches],
             }

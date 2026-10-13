@@ -261,7 +261,20 @@ ANTHROPIC_API_KEY=          # must be explicitly empty
 2. Pick a model id from <https://openrouter.ai/models?q=anthropic>. The default `anthropic/claude-sonnet-5.5` was verified in the OpenRouter catalog. Any `anthropic/claude-*` id works, and changing it needs no code change.
 3. At startup the app validates the key and the model and shows the result in the UI and `/api/integrations` (`ready`, `auth_failed`, `invalid_model`, `not_configured`, `unverified`).
 
-Non-Claude models are outside the guaranteed compatibility scope (the UI shows a warning). Errors are mapped to clear messages: 401 → bad key, 402 → credits, 429 → rate limited, 5xx → provider unavailable.
+Errors are mapped to clear messages: 401 → bad key, 402 → credits, 429 → rate limited, 5xx → provider unavailable.
+
+**Other models (e.g. Qwen).** OpenRouter translates the Anthropic-format requests for non-Anthropic models, so any model that supports **tool calling** can be used with no code change. The read-only policy is enforced in code and does not depend on the model. Non-Claude models are outside the guaranteed scope, so the UI shows a warning.
+
+```env
+OPENROUTER_MODEL=qwen/qwen3.7-plus
+```
+
+| Model | Live result |
+|---|---|
+| `anthropic/claude-sonnet-5.5` | ✅ correct class and file, exact line links, context kept on the follow-up question |
+| `qwen/qwen3.7-plus` | ✅ correct class and file (`oauth2.py#L433`), context kept on the follow-up question |
+
+Choose a model with tool support and at least 128k context (smaller-context models overflow on Claude Code's prompt plus tool output). For image attachments the model must accept images. PDF attachments use Anthropic `document` blocks and may not work with non-Claude models.
 
 ### GitHub
 
@@ -386,7 +399,7 @@ RUN_INTEGRATION_TESTS=1 uv run pytest -m live   # live tests; each skips if its 
 | `test_permissions.py` | Deny-by-default hook and callback, locked-down agent options, OpenRouter env and credential isolation, disabled integrations never registered |
 | `test_chat.py` | Health, status, session lifecycle, SSE framing, JSON mode, validation, context and session isolation, tool failures, attachments (upload, sniffing, limits, consumption) |
 | `test_agent_e2e.py` | **Real Claude Code CLI** against a local fake Anthropic API: exact tool list sent to the model, prompt injection blocked at the wire level, context across turns, isolated sessions, Atlassian read tools and citations, attachments as content blocks, provider auth errors |
-| `test_integration.py` | Live: anonymous GitHub (fastapi/fastapi), OpenRouter question with sources and a follow-up, Atlassian discovery |
+| `test_integration.py` | Live: anonymous GitHub (fastapi/fastapi), OpenRouter question with sources and a follow-up (passes with Claude Sonnet 5.5 and Qwen 3.7 Plus), Atlassian discovery |
 
 ## Project structure
 

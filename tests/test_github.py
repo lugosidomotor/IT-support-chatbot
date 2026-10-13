@@ -236,6 +236,17 @@ async def test_search_rejects_disallowed_repo():
         await search_repository_content(make_client(FakeGitHub()), "other/repo", "x")
 
 
+async def test_search_ignores_generic_words_and_links_best_line():
+    from app.integrations.github.search import query_terms
+
+    assert query_terms("where is the OAuth2PasswordBearer class defined") == ["oauth2passwordbearer"]
+    assert query_terms("class") == ["class"]  # nothing more specific: keep it
+    result = await search_repository_content(make_client(FakeGitHub()), REPO, "OAuth2PasswordBearer class")
+    top = result["results"][0]
+    assert top["path"] == "app/auth.py"
+    assert top["html_url"].endswith("#L3")  # the definition line, not merely the first match
+
+
 def test_search_helpers():
     assert sub_terms("OAuth2PasswordBearer") == ["auth2", "password", "bearer"]  # substring of oauth2.py
     assert classify("node_modules/x/index.js") is None

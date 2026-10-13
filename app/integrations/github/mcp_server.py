@@ -183,7 +183,8 @@ TOOLS: list[ToolSpec] = [
              _get_commit),
     ToolSpec("search_repository_content",
              "Search text inside a configured repository (bounded scan of the most relevant docs, config and "
-             "source files). Returns matching lines with links. Results may be PARTIAL for large repositories; "
+             "source files). Returns matching lines; html_url points at the best line, cite other lines as "
+             "<html_url without #...>#L<line>. Results may be PARTIAL for large repositories; "
              "check `complete` and `partial_reasons`. Use short, specific queries such as an identifier, "
              "setting name or error message fragment.",
              _obj({"repository": _REPO, "query": {"type": "string", "minLength": 2, "maxLength": 200},
@@ -223,7 +224,7 @@ def record_sources(collector: SourceCollector, tool_name: str, result: dict[str,
     elif tool_name == "list_commits":
         collector.add(f"{repo} commit history", f"{WEB_ORIGIN}/{repo}/commits", "github", "commit_list")
     elif tool_name == "search_repository_content":
-        for item in result.get("results", [])[:6]:
+        for item in result.get("results", [])[:4]:
             collector.add(f"{repo}: {item.get('path')}", item.get("html_url"), "github", "file")
 
 
