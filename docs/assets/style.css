@@ -54,9 +54,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { height: 100%; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
 body {
-  margin: 0; overflow: hidden;
+  /* App-like page: the document itself never scrolls or bounces, only the message list does. */
+  position: fixed; inset: 0; width: 100%; margin: 0;
   font: 15px/1.5 var(--font); letter-spacing: -0.008em;
   color: var(--text); background: var(--bg);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
@@ -88,7 +90,7 @@ svg { display: block; }
 
 /* ---------- layout ---------- */
 .shell {
-  position: relative; z-index: 1; height: 100vh; height: 100dvh;
+  position: relative; z-index: 1; height: 100vh; height: var(--app-height, 100dvh);
   display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 920px);
   justify-content: center; gap: 28px; padding: 24px;
 }
@@ -128,7 +130,8 @@ svg { display: block; }
 .tip b { font-weight: 650; }
 .tip .muted { color: var(--text-2); }
 .tip code { font-family: var(--mono); font-size: 11.5px; }
-.led-item:hover .tip, .led-item:focus-visible .tip { opacity: 1; transform: none; }
+.led-item:hover .tip, .led-item:focus-visible .tip, .led-item:focus .tip { opacity: 1; transform: none; }
+.led-item:focus { outline: none; }
 
 .icon-btn {
   width: 36px; height: 36px; flex: none; display: grid; place-items: center;
@@ -151,7 +154,10 @@ svg { display: block; }
 .banner b { font-weight: 650; }
 
 /* ---------- messages ---------- */
-.messages { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px 12px; scroll-behavior: smooth; }
+.messages {
+  flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 24px 28px 12px;
+  scroll-behavior: smooth; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+}
 .messages::-webkit-scrollbar { width: 10px; }
 .messages::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
 
@@ -166,7 +172,7 @@ svg { display: block; }
 }
 .suggestion:hover { background: var(--glass-strong); transform: translateY(-1px); }
 
-.msg { max-width: 760px; margin: 0 auto 18px; animation: rise 0.28s ease-out; }
+.msg { max-width: 760px; min-width: 0; margin: 0 auto 18px; animation: rise 0.28s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .msg-user { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .msg-user .bubble {
@@ -205,7 +211,7 @@ svg { display: block; }
 .md li + li { margin-top: 0.25em; }
 .md code { font-family: var(--mono); font-size: 0.86em; background: var(--inline-code); padding: 0.12em 0.4em; border-radius: 6px; }
 .md pre {
-  position: relative; padding: 14px 16px; border-radius: 16px; overflow-x: auto;
+  position: relative; max-width: 100%; padding: 14px 16px; border-radius: 16px; overflow-x: auto; overscroll-behavior-x: contain;
   background: var(--code-bg); color: var(--code-text); font-size: 13px; line-height: 1.55;
 }
 .md pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
@@ -344,16 +350,25 @@ svg { display: block; }
   .titlebar { padding-left: 12px; }
 }
 @media (max-width: 640px) {
-  .shell { padding: 0; }
-  .window { border-radius: 0; border: none; }
-  .titlebar { border-radius: 0; }
+  .shell { padding: 0; gap: 0; overflow: hidden; }
+  .window { border-radius: 0; border: none; overflow: hidden; }
+  .titlebar { border-radius: 0; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; }
   .led-label { display: none; }
-  .led-item { padding: 7px; }
-  .tip { right: -60px; }
-  .messages { padding: 18px 14px 8px; }
-  .composer { margin: 6px 10px 12px; }
+  .leds { gap: 4px; }
+  .led-item { padding: 8px; }
+  /* Tooltips become a full-width sheet under the title bar (tap a LED to show it). */
+  .tip { position: fixed; top: calc(64px + env(safe-area-inset-top)); left: 12px; right: 12px; width: auto; }
+  .messages { padding: 16px 14px 8px; }
+  .msg-user .bubble, .msg-user .files { max-width: 88%; }
+  .source span { max-width: 230px; }
+  .composer { margin: 6px 10px calc(10px + env(safe-area-inset-bottom)); }
+  .empty { padding-top: 7vh; }
   .empty h2 { font-size: 28px; }
   .meta .usage { display: none; }
+}
+/* iOS zooms into inputs smaller than 16px on focus, which makes the whole page pan around. */
+@media (max-width: 640px), (pointer: coarse) {
+  .composer textarea { font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; transition-duration: 0.001s !important; }

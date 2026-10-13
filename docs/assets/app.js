@@ -522,6 +522,23 @@
     inputEl.focus();
   });
 
+  // ------------------------------------------------------------------ mobile viewport
+
+  // iOS Safari overlays the keyboard instead of resizing the page and then scrolls the document to
+  // reveal the input. Size the app to the *visual* viewport and pin the document at the top.
+  const vv = window.visualViewport;
+  if (vv) {
+    const syncViewport = () => {
+      if (Math.abs(vv.scale - 1) > 0.01) return; // the user is pinch-zooming: leave the layout alone
+      document.documentElement.style.setProperty("--app-height", `${Math.round(vv.height)}px`);
+      if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    };
+    vv.addEventListener("resize", syncViewport);
+    vv.addEventListener("scroll", syncViewport);
+    syncViewport();
+  }
+  inputEl.addEventListener("focus", () => setTimeout(() => scrollToBottom(true), 300));
+
   loadStatus().then(() => {
     if (state.integrations && state.integrations.has_data_sources === false) marvin.setMood("void");
     else marvin.greet();
