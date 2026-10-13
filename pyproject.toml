@@ -1,0 +1,35 @@
+[project]
+name = "developer-support-agent"
+version = "0.1.0"
+description = "Read-only AI developer-support agent over live GitHub, Jira and Confluence data (Claude Agent SDK + MCP + OpenRouter)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "claude-agent-sdk>=0.2.165",
+    "fastapi>=0.143.0",
+    "httpx>=0.28.1",
+    "httpx2>=2.13.1",
+    "jsonschema>=4.26.0",
+    "mcp>=2.3.0",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "e2e: runs the real Claude Code CLI against a local fake LLM (offline, no credentials)",
+    "live: talks to real external services; opt-in via RUN_INTEGRATION_TESTS=1",
+]
+filterwarnings = ["ignore::DeprecationWarning:websockets.*", "ignore::claude_agent_sdk.types.CanUseToolShadowedWarning"]

@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    image: developer-support-agent:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_HOST: 0.0.0.0  # inside the container; the port is published to localhost only
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/app
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

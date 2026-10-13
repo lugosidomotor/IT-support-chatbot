@@ -1,0 +1,29 @@
+# Secrets / runtime credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# Agent runtime state (sessions are stored in a temp dir, but just in case)
+.claude/
+.claude-runtime/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Local browser automation artifacts
+.playwright-mcp/
