@@ -56,7 +56,9 @@ MCP-first · no RAG · no vector DB · Claude Agent SDK · OpenRouter · FastAPI
 | 🧩 **Official Atlassian Rovo MCP** | Jira and Confluence go through the official remote MCP server with a service account API key. They are disabled automatically when the key is not configured. |
 | 🛡️ **Read-only, enforced in code** | Built-in shell, filesystem and web tools are disabled. Tool access is deny-by-default and checked in three places: CLI permissions, a hook, and the MCP server. Write tools are never exposed to the model. |
 | 📎 **Attachments** | Paste, drop or pick images, PDFs, logs and source files. They are validated by content, kept in memory only, and passed to the model as untrusted data. |
-| ⚡ **Streaming UI** | Server-Sent Events: streamed Markdown, live tool steps, source chips and token usage. Glassmorphism design with light and dark mode, and it works on mobile. |
+| ⚡ **Streaming UI** | Server-Sent Events: streamed Markdown, live tool steps, source chips and token usage. Glassmorphism design that works on mobile. |
+| 🌗 **Light / dark** | Follows the OS until you pick one with the title-bar toggle; the choice is remembered. |
+| 📤 **Export** | Download the conversation as **Markdown** (answers, steps, sources, usage) or **JSON**. It is generated in the browser, so nothing is stored on the server. |
 | 🤖 **Marvin** | A hand-drawn SVG homage to the gloomy robot. His head and gaze follow your cursor, and he has opinions. |
 | 🐳 **One command** | `docker compose up --build`. The Claude Code runtime is bundled with the SDK wheel, so no Node.js is needed. |
 
@@ -65,7 +67,7 @@ MCP-first · no RAG · no vector DB · Claude Agent SDK · OpenRouter · FastAPI
 <table>
   <tr>
     <td width="50%"><img src="docs/images/hero.png" alt="Light mode"><br><sub><b>Light mode:</b> a streamed answer with tool steps and a cited source</sub></td>
-    <td width="50%"><img src="docs/images/dark.png" alt="Dark mode"><br><sub><b>Dark mode:</b> follows the operating system setting</sub></td>
+    <td width="50%"><img src="docs/images/dark.png" alt="Dark mode"><br><sub><b>Dark mode</b> (title-bar toggle) with the <b>export</b> menu open</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/attachments.png" alt="Attachments"><br><sub><b>Attachments:</b> images, PDFs, logs and code (paste / drop / pick)</sub></td>

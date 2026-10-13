@@ -19,7 +19,7 @@ STATIC = ROOT / "app" / "static"
 DEMO_JS = ROOT / "demo" / "demo.js"
 DOCS = ROOT / "docs"
 ASSETS = DOCS / "assets"
-COPIED = ["style.css", "app.js", "marvin.js", "vendor/marked.umd.js", "vendor/purify.min.js"]
+COPIED = ["style.css", "theme.js", "app.js", "marvin.js", "vendor/marked.umd.js", "vendor/purify.min.js"]
 REPO_URL = "https://github.com/lugosidomotor/IT-support-chatbot"
 
 DEMO_BANNER = (

@@ -34,7 +34,7 @@
   };
   const COPY_ICON = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
 
-  const state = { sessionId: null, busy: false, controller: null, integrations: null, pollTimer: 0, pending: [] };
+  const state = { sessionId: null, busy: false, controller: null, integrations: null, pollTimer: 0, pending: [], transcript: [] };
 
   // ------------------------------------------------------------------ markdown
 
@@ -292,6 +292,8 @@
 
   function addUserMessage(text, files) {
     hideEmpty();
+    record({ role: "user", at: new Date().toISOString(), text,
+      attachments: files.map((f) => ({ name: f.name, kind: f.kind, size: f.size })) });
     const node = el("div", { class: "msg msg-user" });
     if (files.length) node.append(el("div", { class: "files" }, ...files.map((f) => fileChip({ ...f, state: "ready" }, false))));
     if (text) node.append(el("div", { class: "bubble", text }));
@@ -326,6 +328,7 @@
   class Answer {
     constructor(retry) {
       this.retry = retry;
+      this.entry = record({ role: "assistant", at: new Date().toISOString(), text: "", steps: [], sources: [], errors: [] });
       this.text = "";
       this.steps = new Map();
       this.errored = false;
@@ -366,10 +369,16 @@
       }
       node.dataset.status = event.status;
       if (event.status === "error" && event.detail) node.title = event.detail;
+      const step = this.entry.steps.find((s) => s.id === event.id);
+      if (step) step.status = event.status;
+      else if (event.label) {
+        this.entry.steps.push({ id: event.id, integration: event.integration, label: event.label, input: event.input || "", status: event.status });
+      }
       scrollToBottom();
     }
 
     source(event) {
+      this.entry.sources.push({ title: event.title, url: event.url, integration: event.integration });
       this.sources.hidden = false;
       this.sources.append(el("a", { class: "source", href: event.url, target: "_blank", rel: "noopener noreferrer",
         "data-integration": event.integration, "data-url": event.url, title: event.url },
@@ -382,6 +391,7 @@
 
     error(event) {
       this.errored = true;
+      this.entry.errors.push(event.message || "Something went wrong.");
       this.typing.hidden = true;
       const alert = el("div", { class: "alert", role: "alert" }, el("div", { class: "alert-body", text: event.message || "Something went wrong." }));
       if (event.retryable && this.retry) alert.append(el("button", { type: "button", class: "pill-btn", text: "Retry", onclick: this.retry }));
@@ -397,9 +407,13 @@
       if (event.duration_ms != null) parts.push(`${(event.duration_ms / 1000).toFixed(1)}s`);
       this.usageEl.textContent = parts.join(" · ");
       this.usageEl.title = event.model || "";
+      this.entry.usage = { model: event.model, input_tokens: event.input_tokens, output_tokens: event.output_tokens,
+        steps: event.num_turns, duration_ms: event.duration_ms };
     }
 
     finish() {
+      this.entry.text = this.text;
+      updateExportState();
       this.root.removeAttribute("aria-busy");
       this.typing.hidden = true;
       this.body.classList.remove("caret");
@@ -516,11 +530,128 @@
     $("#empty").hidden = false;
     for (const item of state.pending) if (item.url) URL.revokeObjectURL(item.url);
     state.pending = [];
+    state.transcript = [];
+    updateExportState();
+    closeExportMenu();
     renderTray();
     try { await createSession(); } catch (err) { addNotice(`Could not start a new conversation: ${err.message}`); }
     marvin.say("A fresh start. As if that ever helps.");
     inputEl.focus();
   });
+
+  // ------------------------------------------------------------------ transcript & export
+
+  function record(entry) {
+    state.transcript.push(entry);
+    updateExportState();
+    return entry;
+  }
+
+  const exportBtn = $("#export-btn");
+  const exportMenu = $("#export-menu");
+  function updateExportState() {
+    exportBtn.disabled = !state.transcript.some((e) => e.role === "assistant" && (e.text || e.errors.length));
+  }
+  function closeExportMenu() {
+    exportMenu.hidden = true;
+    exportBtn.setAttribute("aria-expanded", "false");
+  }
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const clock = (iso) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+  function exportMeta() {
+    const data = state.integrations || {};
+    const connected = ["github", "jira", "confluence"].filter((k) => data[k] && data[k].status === "connected");
+    return {
+      model: (data.llm && data.llm.model) || "",
+      sources: connected.map((k) => (k === "github" ? `GitHub (${(data.github.repositories || []).join(", ")})` : LABELS[k])),
+    };
+  }
+
+  function toMarkdown() {
+    const meta = exportMeta();
+    const lines = ["# Developer Support · conversation", "",
+      `- **Exported:** ${stamp(new Date())}`, `- **Model:** ${meta.model || "unknown"}`,
+      `- **Knowledge sources:** ${meta.sources.join(", ") || "none"}`, "", "---", ""];
+    for (const entry of state.transcript) {
+      if (entry.role === "user") {
+        lines.push(`### 🧑 You · ${clock(entry.at)}`, "", entry.text || "_(attachments only)_", "");
+        if (entry.attachments.length) {
+          lines.push(`_Attachments: ${entry.attachments.map((a) => `${a.name} (${a.kind}, ${prettySize(a.size)})`).join(", ")}_`, "");
+        }
+        continue;
+      }
+      lines.push(`### 🤖 Assistant · ${clock(entry.at)}`, "");
+      if (entry.steps.length) {
+        const steps = entry.steps.map((s) => `${LABELS[s.integration] || s.integration} · ${s.label}${s.input ? ` (${s.input})` : ""}${s.status === "error" ? " ✗" : ""}`);
+        lines.push(`_Steps: ${steps.join("; ")}_`, "");
+      }
+      if (entry.text) lines.push(entry.text.trim(), "");
+      for (const error of entry.errors) lines.push(`> ⚠️ ${error}`, "");
+      if (entry.sources.length) {
+        lines.push("**Sources**", "", ...entry.sources.map((src) => `- [${src.title.replace(/[[\]]/g, "")}](${src.url})`), "");
+      }
+      if (entry.usage) {
+        const u = entry.usage;
+        lines.push(`_${[u.input_tokens != null && `${u.input_tokens} in`, u.output_tokens != null && `${u.output_tokens} out`,
+          u.steps != null && `${u.steps} steps`, u.duration_ms != null && `${(u.duration_ms / 1000).toFixed(1)}s`].filter(Boolean).join(" · ")}_`, "");
+      }
+      lines.push("---", "");
+    }
+    return lines.join("\n");
+  }
+
+  function toJson() {
+    return JSON.stringify({ exported_at: new Date().toISOString(), ...exportMeta(), messages: state.transcript }, null, 2);
+  }
+
+  function download(content, type, extension) {
+    const d = new Date();
+    const name = `developer-support-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.${extension}`;
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const link = el("a", { href: url, download: name });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  exportBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const open = exportMenu.hidden;
+    exportMenu.hidden = !open;
+    exportBtn.setAttribute("aria-expanded", String(open));
+    if (open) exportMenu.querySelector("button").focus();
+  });
+  exportMenu.addEventListener("click", (ev) => {
+    const item = ev.target.closest("[data-format]");
+    if (!item) return;
+    if (item.dataset.format === "json") download(toJson(), "application/json", "json");
+    else download(toMarkdown(), "text/markdown;charset=utf-8", "md");
+    closeExportMenu();
+    marvin.say("Exported. Something to read when you're even more bored than I am.");
+  });
+  document.addEventListener("click", (ev) => { if (!ev.target.closest(".menu-wrap")) closeExportMenu(); });
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !exportMenu.hidden) { closeExportMenu(); exportBtn.focus(); } });
+
+  // ------------------------------------------------------------------ theme
+
+  const themeBtn = $("#theme-btn");
+  function syncThemeButton() {
+    const dark = window.DSATheme && window.DSATheme.get() === "dark";
+    const label = dark ? "Switch to light mode" : "Switch to dark mode";
+    themeBtn.setAttribute("aria-label", label);
+    themeBtn.title = label;
+  }
+  themeBtn.addEventListener("click", () => {
+    if (!window.DSATheme) return;
+    const theme = window.DSATheme.toggle();
+    marvin.say(theme === "dark" ? "Darkness. Finally, something that matches my mood." : "Light mode. How painfully cheerful.");
+  });
+  document.addEventListener("dsa:theme", syncThemeButton);
+  syncThemeButton();
 
   // ------------------------------------------------------------------ mobile viewport
 
